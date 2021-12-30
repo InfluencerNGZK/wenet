@@ -6,7 +6,7 @@
 
 # Use this to control how many gpu you use, It's 1-gpu training if you specify
 # just 1gpu, otherwise it's is multiple gpu training based on DDP in pytorch
-export CUDA_VISIBLE_DEVICES="0,1,2,3"
+export CUDA_VISIBLE_DEVICES="1"
 stage=0 # start from 0 if you need to start from data preparation
 stop_stage=5
 
@@ -24,7 +24,8 @@ num_nodes=1
 node_rank=0
 
 # data
-dbase=/ssd/nfs06/di.wu/open_source
+# dbase=/ssd/nfs06/di.wu/open_source
+dbase=/export
 aidatatang_url=www.openslr.org/resources/62
 aishell_url=www.openslr.org/resources/33
 magicdata_url=www.openslr.org/resources/68
@@ -67,17 +68,17 @@ decode_modes="ctc_greedy_search ctc_prefix_beam_search attention attention_resco
 if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
     echo "stage -1: Data Download"
     # download all training data
-    local/aidatatang_download_and_untar.sh $dbase/aidatatang $aidatatang_url aidatatang_200zh || exit 1;
-    local/aishell_download_and_untar.sh $dbase/aishell $aishell_url data_aishell || exit 1;
-    local/magicdata_download_and_untar.sh $dbase/magicdata $magicdata_url train_set || exit 1;
-    local/primewords_download_and_untar.sh $dbase/primewords $primewords_url || exit 1;
-    local/stcmds_download_and_untar.sh $dbase/stcmds $stcmds_url || exit 1;
-    local/thchs_download_and_untar.sh $dbase/thchs $thchs_url data_thchs30 || exit 1;
+    # local/aidatatang_download_and_untar.sh $dbase/aidatatang $aidatatang_url aidatatang_200zh || exit 1;
+    # local/aishell_download_and_untar.sh $dbase/aishell $aishell_url data_aishell || exit 1;
+    # local/magicdata_download_and_untar.sh $dbase/magicdata $magicdata_url train_set || exit 1;
+    # local/primewords_download_and_untar.sh $dbase/primewords $primewords_url || exit 1;
+    # local/stcmds_download_and_untar.sh $dbase/stcmds $stcmds_url || exit 1;
+    # local/thchs_download_and_untar.sh $dbase/thchs $thchs_url data_thchs30 || exit 1;
 
     # download all test data
-    local/thchs_download_and_untar.sh $dbase/thchs $thchs_url test-noise || exit 1;
-    local/magicdata_download_and_untar.sh $dbase/magicdata $magicdata_url dev_set || exit 1;
-    local/magicdata_download_and_untar.sh $dbase/magicdata $magicdata_url test_set || exit 1;
+    # local/thchs_download_and_untar.sh $dbase/thchs $thchs_url test-noise || exit 1;
+    # local/magicdata_download_and_untar.sh $dbase/magicdata $magicdata_url dev_set || exit 1;
+    # local/magicdata_download_and_untar.sh $dbase/magicdata $magicdata_url test_set || exit 1;
     # tal data need download from Baidu SkyDrive
     # AISHELL-2 database is free for academic research, not in the commerce, if without permission.
     # You need to request the data from AISHELL company.
@@ -85,14 +86,14 @@ fi
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     # Data preparation
-    local/aidatatang_data_prep.sh $dbase/aidatatang/aidatatang_200zh data/aidatatang || exit 1;
-    local/aishell_data_prep.sh $dbase/aishell/data_aishell data/aishell || exit 1;
-    local/thchs-30_data_prep.sh $dbase/thchs/data_thchs30 data/thchs || exit 1;
-    local/magicdata_data_prep.sh $dbase/magicdata/ data/magicdata || exit 1;
-    local/primewords_data_prep.sh $dbase/primewords data/primewords || exit 1;
-    local/stcmds_data_prep.sh $dbase/stcmds data/stcmds || exit 1;
-    local/tal_data_prep.sh $dbase/TAL/TAL_ASR data/tal_asr || exit 1;
-    local/tal_mix_data_prep.sh $dbase/TAL/TAL_ASR_mix data/tal_mix || exit 1;
+    # local/aidatatang_data_prep.sh $dbase/aidatatang/aidatatang_200zh aidatatang || exit 1;
+    # local/aishell_data_prep.sh $dbase/aishell/data_aishell aishell || exit 1;
+    # local/thchs-30_data_prep.sh $dbase/thchs/data_thchs30 thchs || exit 1;
+    # local/magicdata_data_prep.sh $dbase/magicdata/ magicdata || exit 1;
+    # local/primewords_data_prep.sh $dbase/primewords primewords || exit 1;
+    local/stcmds_data_prep.sh $dbase/stcmds stcmds || exit 1;
+    # local/tal_data_prep.sh $dbase/TAL/TAL_ASR tal_asr || exit 1;
+    # local/tal_mix_data_prep.sh $dbase/TAL/TAL_ASR_mix tal_mix || exit 1;
 
     if $has_aishell2; then
         local/aishell2_data_prep.sh $dbase/aishell2/IOS data/aishell2/train || exit 1;
@@ -107,9 +108,11 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
             data/{aidatatang,aishell,magicdata,thchs,aishell2}/dev || exit 1;
     else
         tools/combine_data.sh data/train \
-            data/{aidatatang,aishell,magicdata,primewords,stcmds,thchs}/train || exit 1;
-        tools/combine_data.sh data/dev \
-            data/{aidatatang,aishell,magicdata,thchs}/dev || exit 1;
+            stcmds/train || exit 1;
+            # data/{aidatatang,aishell,magicdata,primewords,stcmds,thchs}/train || exit 1;
+        # tools/combine_data.sh data/dev \
+        #     magicdata/dev || exit 1;
+            # data/{aidatatang,aishell,magicdata,thchs}/dev || exit 1;
     fi
 fi
 
@@ -124,7 +127,8 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     if $has_aishell2; then
         test_sets="aishell aidatatang magicdata thchs aishell2 tal_asr"
     else
-        test_sets="aishell aidatatang magicdata thchs tal_asr"
+        # test_sets="aishell aidatatang magicdata thchs tal_asr"
+        test_sets=""
     fi
 
     for x in ${test_sets}; do

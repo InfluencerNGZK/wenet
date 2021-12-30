@@ -22,7 +22,7 @@ num_nodes=1
 # the third one set node_rank 2, and so on. Default 0
 node_rank=0
 # data
-data=/export
+data=/export/aishell
 data_url=www.openslr.org/resources/33
 
 nj=16
