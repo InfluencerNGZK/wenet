@@ -7,7 +7,58 @@ from contextlib import nullcontext
 # from contextlib import suppress as nullcontext
 import torch
 from torch.nn.utils import clip_grad_norm_
+import csv
+import collections
 
+
+def check_memory_stat_consistency():
+    snapshot = torch.cuda.memory_snapshot()
+
+    expected_each_device = collections.defaultdict(lambda: collections.defaultdict(int))
+
+    # for segment in snapshot:
+    for idx, segment in enumerate(snapshot):
+        expected = expected_each_device[segment["device"]]
+        pool_str = segment["segment_type"] + "_pool"
+
+        # expected["segment.all.current"] += 1
+        # expected["segment." + pool_str + ".current"] += 1
+
+        # expected["allocated_bytes.all.current"] += segment["allocated_size"]
+        # expected["allocated_bytes." + pool_str + ".current"] += segment["allocated_size"]
+
+        expected["reserved_bytes.all.current"] += segment["total_size"]
+        expected["reserved_bytes." + pool_str + ".current"] += segment["total_size"]
+
+        expected["active_bytes.all.current"] += segment["active_size"]
+        expected["active_bytes." + pool_str + ".current"] += segment["active_size"]
+
+        is_split = len(segment["blocks"]) > 1
+        real = 0.0
+        for block in segment["blocks"]:
+            # if block["state"] == "active_allocated":
+            #     expected["allocation.all.current"] += 1
+            #     expected["allocation." + pool_str + ".current"] += 1
+            # if idx == 7 or idx == 8:
+            print("The block size is:", block["size"] / 1024 / 1024, "MB", ", the block state is:", block["state"])
+
+            if block["state"].startswith("active_"):
+                expected["active.all.current"] += 1
+                expected["active." + pool_str + ".current"] += 1
+
+            if block["state"] == "inactive" and is_split:
+                expected["inactive_split.all.current"] += 1
+                expected["inactive_split." + pool_str + ".current"] += 1
+                expected["inactive_split_bytes.all.current"] += block["size"]
+                expected["inactive_split_bytes." + pool_str + ".current"] += block["size"]
+                real += block["size"]
+        print("Segment Index:", idx, ", Inactivate split rate: ",
+              round((real / segment["total_size"] * 100), 2),
+              "%,   Total Size:",
+              segment["total_size"] / 1024 / 1024, "MB",
+              ",   Inactive Size:",
+              round(real / 1024 / 1024, 2), "MB")
+    print()
 
 class Executor:
     def __init__(self):
@@ -30,12 +81,22 @@ class Executor:
             assert scaler is not None
         num_seen_utts = 0
         num_total_batch = len(data_loader)
+        memory_allocated_list, memory_reserved_list, memory_inactive_list = [], [], []
         for batch_idx, batch in enumerate(data_loader):
             key, feats, target, feats_lengths, target_lengths = batch
+            if batch_idx % 50 == 0:
+                memory_allocated_list.append(torch.cuda.memory_stats()["allocated_bytes.all.current"] / 1024 / 1024)
+                memory_reserved_list.append(torch.cuda.memory_stats()["reserved_bytes.all.current"] / 1024 / 1024)
+                memory_inactive_list.append(torch.cuda.memory_stats()["inactive_split_bytes.all.current"] / 1024 / 1024)
             feats = feats.to(device)
             target = target.to(device)
             feats_lengths = feats_lengths.to(device)
             target_lengths = target_lengths.to(device)
+            if batch_idx % 50 == 0:
+                memory_allocated_list.append(torch.cuda.memory_stats()["allocated_bytes.all.current"] / 1024 / 1024)
+                memory_reserved_list.append(torch.cuda.memory_stats()["reserved_bytes.all.current"] / 1024 / 1024)
+                memory_inactive_list.append(torch.cuda.memory_stats()["inactive_split_bytes.all.current"] / 1024 / 1024)
+                # check_memory_stat_consistency()
             num_utts = target_lengths.size(0)
             if num_utts == 0:
                 continue
@@ -96,6 +157,11 @@ class Executor:
                     log_str += 'loss_ctc {:.6f} '.format(loss_ctc.item())
                 log_str += 'lr {:.8f} rank {}'.format(lr, rank)
                 logging.debug(log_str)
+        with open('test.csv', 'w') as f:
+            write = csv.writer(f)
+            write.writerow(memory_allocated_list)
+            write.writerow(memory_reserved_list)
+            write.writerow(memory_inactive_list)
 
     def cv(self, model, data_loader, device, args):
         ''' Cross validation on
