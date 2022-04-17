@@ -1,0 +1,33 @@
+{
+    "train_batch_size": 16,
+    "train_micro_batch_size_per_gpu": 1,
+    "fp16": {
+      "enabled": true,
+      "loss_scale": 4096,
+      "loss_scale_window": 1000,
+      "hysteresis": 2,
+      "min_loss_scale": 1
+    },
+    "optimizer": {
+        "type": "Adam",
+        "params": {
+          "lr": 0.002
+        }
+    },
+     "scheduler": {
+      "type": "WarmupLR",
+      "params": {
+        "warmup_num_steps": 25000
+      }
+    },
+    "zero_optimization": {
+        "stage": 2,
+        "offload_optimizer": {
+            "device": "cpu",
+            "pin_memory": true
+        },
+        "overlap_comm": true,
+        "reduce_bucket_size": 5e8,
+        "contiguous_gradients": true
+    }
+}

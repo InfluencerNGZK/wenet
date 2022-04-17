@@ -144,12 +144,15 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         # Rank of each gpu/process used for knowing whether it is
         # the master of a worker.
         rank=`expr $node_rank \* $num_gpus + $i`
-        python wenet/bin/train.py --gpu $gpu_id \
+        # python wenet/bin/train.py --gpu $gpu_id \
+        deepspeed wenet/bin/train.py --gpu $gpu_id \
             --config $train_config \
             --train_data $feat_dir/$train_set/format.data \
             --cv_data $feat_dir/dev/format.data \
             ${checkpoint:+--checkpoint $checkpoint} \
             --model_dir $dir \
+            --deepspeed \
+            --deepspeed_config deepspeed_config.json \
             --ddp.init_method $init_method \
             --ddp.world_size $world_size \
             --ddp.rank $rank \

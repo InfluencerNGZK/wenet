@@ -32,6 +32,8 @@ from wenet.utils.checkpoint import load_checkpoint, save_checkpoint
 from wenet.utils.executor import Executor
 from wenet.utils.scheduler import WarmupLR
 
+import deepspeed
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='training your network')
     parser.add_argument('--config', required=True, help='config file')
@@ -78,8 +80,21 @@ if __name__ == '__main__':
                         action='store_true',
                         default=False,
                         help='Use automatic mixed precision training')
+    parser.add_argument("--local_rank",
+                        type=int,
+                        default=-1,
+                        help="local_rank for distributed training on gpus")
+    parser.add_argument('--deepspeed_sparse_attention',
+                        default=False,
+                        action='store_true',
+                        help='Use DeepSpeed sparse self attention.')
+    parser.add_argument('--deepspeed_transformer_kernel',
+                        default=False,
+                        action='store_true',
+                        help='Use DeepSpeed transformer kernel to accelerate.')
     parser.add_argument('--cmvn', default=None, help='global cmvn file')
 
+    parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG,
@@ -163,16 +178,19 @@ if __name__ == '__main__':
 
     # Init asr model from configs
     model = init_asr_model(configs)
+    if args.rank == 0:
+        script_model = torch.jit.script(model)
+        script_model.save(os.path.join(args.model_dir, 'init.zip'))
     print(model)
+    # add deepspeed support
+    model, optimizer, _, scheduler = deepspeed.initialize(args=args, model=model, model_parameters=model.parameters())
     num_params = sum(p.numel() for p in model.parameters())
     print('the number of model params: {}'.format(num_params))
 
     # !!!IMPORTANT!!!
     # Try to export the model by script, if fails, we should refine
     # the code to satisfy the script export requirements
-    if args.rank == 0:
-        script_model = torch.jit.script(model)
-        script_model.save(os.path.join(args.model_dir, 'init.zip'))
+    
     executor = Executor()
     # If specify checkpoint, load some info from checkpoint
     if args.checkpoint is not None:
@@ -203,8 +221,8 @@ if __name__ == '__main__':
         device = torch.device('cuda' if use_cuda else 'cpu')
         model = model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), **configs['optim_conf'])
-    scheduler = WarmupLR(optimizer, **configs['scheduler_conf'])
+    # optimizer = optim.Adam(model.parameters(), **configs['optim_conf'])
+    # scheduler = WarmupLR(optimizer, **configs['scheduler_conf'])
     final_epoch = None
     configs['rank'] = args.rank
     configs['is_distributed'] = distributed
@@ -215,7 +233,7 @@ if __name__ == '__main__':
 
     # Start training loop
     executor.step = step
-    scheduler.set_step(step)
+    # scheduler.set_step(step)
     # used for pytorch amp mixed precision training
     scaler = None
     if args.use_amp:

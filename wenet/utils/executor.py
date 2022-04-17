@@ -77,8 +77,8 @@ class Executor:
         use_amp = args.get('use_amp', False)
         logging.info('using accumulate grad, new batch size is {} times'
                      'larger than before'.format(accum_grad))
-        if use_amp:
-            assert scaler is not None
+        # if use_amp:
+            # assert scaler is not None
         num_seen_utts = 0
         num_total_batch = len(data_loader)
         memory_allocated_list, memory_reserved_list, memory_inactive_list = [], [], []
@@ -114,37 +114,41 @@ class Executor:
                 # autocast context
                 # The more details about amp can be found in
                 # https://pytorch.org/docs/stable/notes/amp_examples.html
-                with torch.cuda.amp.autocast(scaler is not None):
-                    loss, loss_att, loss_ctc = model(feats, feats_lengths,
+                loss, loss_att, loss_ctc = model(feats, feats_lengths,
                                                      target, target_lengths)
-                    loss = loss / accum_grad
-                if use_amp:
-                    scaler.scale(loss).backward()
-                else:
-                    loss.backward()
+                # with torch.cuda.amp.autocast(scaler is not None):
+                #     loss, loss_att, loss_ctc = model(feats, feats_lengths,
+                #                                      target, target_lengths)
+                #     loss = loss / accum_grad
+                model.backward(loss)
+                # if use_amp:
+                #     scaler.scale(loss).backward()
+                # else:
+                #     loss.backward()
 
             num_seen_utts += num_utts
             if batch_idx % accum_grad == 0:
                 if rank == 0 and writer is not None:
                     writer.add_scalar('train_loss', loss, self.step)
                 # Use mixed precision training
-                if use_amp:
-                    scaler.unscale_(optimizer)
-                    grad_norm = clip_grad_norm_(model.parameters(), clip)
-                    # Must invoke scaler.update() if unscale_() is used in the
-                    # iteration to avoid the following error:
-                    #   RuntimeError: unscale_() has already been called
-                    #   on this optimizer since the last update().
-                    # We don't check grad here since that if the gradient has
-                    # inf/nan values, scaler.step will skip optimizer.step().
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    grad_norm = clip_grad_norm_(model.parameters(), clip)
-                    if torch.isfinite(grad_norm):
-                        optimizer.step()
-                optimizer.zero_grad()
-                scheduler.step()
+                model.step()
+                # if use_amp:
+                #     scaler.unscale_(optimizer)
+                #     grad_norm = clip_grad_norm_(model.parameters(), clip)
+                #     # Must invoke scaler.update() if unscale_() is used in the
+                #     # iteration to avoid the following error:
+                #     #   RuntimeError: unscale_() has already been called
+                #     #   on this optimizer since the last update().
+                #     # We don't check grad here since that if the gradient has
+                #     # inf/nan values, scaler.step will skip optimizer.step().
+                #     scaler.step(optimizer)
+                #     scaler.update()
+                # else:
+                #     grad_norm = clip_grad_norm_(model.parameters(), clip)
+                #     if torch.isfinite(grad_norm):
+                #         optimizer.step()
+                # optimizer.zero_grad()
+                # scheduler.step()
                 self.step += 1
             if batch_idx % log_interval == 0:
                 lr = optimizer.param_groups[0]['lr']
